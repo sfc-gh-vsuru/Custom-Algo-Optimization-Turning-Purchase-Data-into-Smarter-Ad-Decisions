@@ -1,8 +1,121 @@
 # Affinity Solutions — Multi-Platform DCR + AI/ML Demo Build Plan
 
 **Target date:** Ad Week, **2026-10-05**
-**Build environment:** Snowflake SE demo account (see README.md for setup)
-**Status:** Phases 0-5 COMPLETE for TTD/PubMatic/Kargo. AdRoll platform added. Ready for Ad Week rehearsal.
+**Build environment:** Snowflake SE demo account (see §0 for setup)
+**Status:** Phases 0-5 COMPLETE for all four platforms (TTD, PubMatic, Kargo, AdRoll). Ready for Ad Week rehearsal.
+
+> This document combines the setup and deployment guide (§0) with the full technical build plan (§1 onward). For the business-level solution overview, see [`README.md`](README.md).
+
+---
+
+## 0. Setup & Deployment
+
+Demonstrates how Affinity Solutions' purchase-outcome data drives value across DSP (The Trade Desk), Retargeting DSP (AdRoll), SSP (PubMatic), and Ad Server (Kargo) using Snowflake Data Clean Rooms and Snowflake ML.
+
+### 0.1 What's inside the repo
+
+| Folder / file | Contents |
+|--------|----------|
+| `apps/` | 6 Streamlit in Snowflake app source files |
+| `data/` | Pre-built CSV data files (compressed where >5MB) |
+| `data_models/` | Per-vendor data model files extracted from §3–§5A |
+| `setup/` | SQL scripts and upload shell script |
+| `images/` | Architecture diagram |
+| `source_info/` | Reference docs (PDFs, build plans) — not tracked in git |
+| `README.md` | Business-level solution overview (Custom Algo Optimization) |
+| `DEMO_TALK_TRACK.md` | Presenter guide with chart-by-chart narration |
+| `PUBMATIC_DEMO_TRACK.md` | Plain-language PubMatic demo track |
+| `ADROLL_ARCHITECTURE.md` | AdRoll solution architecture diagram |
+
+### 0.2 The 6 Streamlit dashboards
+
+| # | App | Tabs | Audience |
+|---|-----|------|----------|
+| 1 | Pipeline End-to-End | 6 | Everyone — the full story |
+| 2 | TTD Bid Explorer | 6 | TTD / DSP buyers |
+| 3 | PubMatic Yield Scorer | 6 | PubMatic / SSP sellers |
+| 4 | Kargo Attribution | 6 | Kargo / CTV buyers |
+| 5 | AdRoll Purchase Intelligence | 6 | AdRoll / NextRoll — B2B + retargeting |
+| 6 | Cross-Platform Comparison | 4 | Internal / exec summary (all 4 platforms) |
+
+### 0.3 Prerequisites
+
+**Snowflake account**
+- **Edition:** Enterprise or Business Critical (required for Snowflake ML)
+- **Role:** ACCOUNTADMIN (or a role with CREATE DATABASE, CREATE WAREHOUSE, CREATE STREAMLIT)
+- **Warehouse:** Setup creates two warehouses (MEDIUM + LARGE)
+
+**Local tools**
+- **Snowflake CLI (`snow`)** — [Install guide](https://docs.snowflake.com/en/developer-guide/snowflake-cli/installation/installation)
+- **Git** — for cloning the repo
+
+**Snowflake CLI connection** — configure a named connection in `~/.snowflake/connections.toml`:
+
+```toml
+[my_demo_conn]
+account = "YOUR_ACCOUNT_LOCATOR"
+user = "YOUR_USERNAME"
+authenticator = "externalbrowser"   # or "snowflake" for password auth
+role = "ACCOUNTADMIN"
+warehouse = "COMPUTE_WH"
+database = "AFFINITY_DEMO"
+```
+
+Test it: `snow connection test --connection my_demo_conn`
+
+### 0.4 Setup instructions
+
+**Step 1: Clone the repo**
+```bash
+git clone <repo-url>
+cd <repo-folder>
+```
+
+**Step 2: Create the Snowflake environment**
+```bash
+snow sql -f setup/01_environment.sql --connection my_demo_conn
+```
+Creates database `AFFINITY_DEMO`, 11 schemas, 2 warehouses, file formats, and stages.
+
+**Step 3: Upload data and app files to stages**
+```bash
+./setup/upload_data.sh my_demo_conn
+```
+Uploads all CSV data files and Streamlit app source files to Snowflake internal stages.
+
+**Step 4: Load data into tables**
+```bash
+snow sql -f setup/02_load_data.sql --connection my_demo_conn
+```
+Creates all tables and loads data from the staged CSV files. Verify row counts at the end.
+
+**Step 5: Deploy the Streamlit apps**
+```bash
+snow sql -f setup/03_streamlit_apps.sql --connection my_demo_conn
+```
+Creates all 6 Streamlit in Snowflake apps.
+
+**Step 6: Verify**
+Open Snowsight → **Streamlit** in the left sidebar. You should see 6 apps under `AFFINITY_DEMO.APPS`. Open each one to confirm it loads without errors.
+
+### 0.5 Troubleshooting
+
+| Issue | Fix |
+|-------|-----|
+| `COPY INTO` fails with "file not found" | Re-run `upload_data.sh` — files may not have uploaded |
+| Streamlit shows "table not found" | Ensure `02_load_data.sql` completed successfully |
+| Charts show "xOffset" error | SiS runs Altair v4 — all apps are already compatible |
+| `hide_index` error | SiS uses older Streamlit — all apps are already compatible |
+| Warehouse suspended | Warehouses auto-resume; retry the query |
+
+### 0.6 Security notes
+
+- No credentials, tokens, or connection strings are stored in this repo
+- All data is synthetic (generated, not real customer data)
+- AdRoll impression-level data is not publicly available; the demo uses conversion-level data per documented API schemas
+- The `source_info/` folder (reference PDFs/docs) is gitignored
+
+The database schema layout is in §2 ("Environment layout").
 
 ---
 
@@ -1347,7 +1460,7 @@ Phases 0 and 1 can start now. **Phase 2 onward is gated on these.**
 
 ### Phase 0 — Environment ✅ COMPLETE
 
-- [x] Connect to Snowflake account (see README.md for connection setup).
+- [x] Connect to Snowflake account (see §0.3 for connection setup).
 - [x] Confirm SFDCR is enabled in the account.
 - [x] Create `AFFINITY_DEMO` database with 11 schemas; provision `AFFINITY_GEN_WH`
       (Large) and `AFFINITY_DEMO_WH` (Medium).
