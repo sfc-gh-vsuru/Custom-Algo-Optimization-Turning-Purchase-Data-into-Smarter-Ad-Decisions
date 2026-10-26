@@ -1,0 +1,132 @@
+"FEED","SUPPLY_NAME","DEVICE_CLASS","MATCHED_IMPRESSIONS","PURCHASES","PURCHASE_RATE_PCT","YIELD_INDEX","VALUE_PER_1K_IMPS","PRICE_TIER","SUGGESTED_PRICE_MULTIPLIER"
+"DVPLUS","puzzlepal.app","Desktop",17802,57,0.320,0.45,275.73,"4 - Value",0.50
+"DVPLUS","recipebox.com","Tablet",3919,47,1.199,1.04,1145.65,"3 - Standard",1.04
+"DVPLUS","recipebox.com","Desktop",17623,163,0.925,0.88,815.21,"3 - Standard",0.88
+"DVPLUS","sportscentralnews.com","Tablet",5144,54,1.050,0.98,975.94,"3 - Standard",0.98
+"DVPLUS","sportscentralnews.com","Mobile",25357,240,0.947,0.89,842.95,"3 - Standard",0.89
+"DVPLUS","techpulse.com","Desktop",15084,66,0.438,0.55,405.66,"4 - Value",0.55
+"DVPLUS","gamerhub.com","Connected TV",1492,8,0.536,0.88,517.9,"3 - Standard",0.88
+"STREAMING","NewsNow 24","Connected TV",79230,722,0.911,0.84,1035.05,"4 - Value",0.84
+"STREAMING","HearthTV Home","Set Top Box",8404,199,2.368,1.73,2335.53,"1 - Premium",1.73
+"STREAMING","LaughTrack TV","Game Console",4863,44,0.905,0.91,866.02,"3 - Standard",0.91
+"DVPLUS","travelscout.com","Desktop",12404,103,0.830,0.83,739.19,"4 - Value",0.83
+"DVPLUS","celebgossip.com","Mobile",19385,94,0.485,0.56,461.92,"4 - Value",0.56
+"DVPLUS","stylefeed.com","Desktop",15079,162,1.074,0.99,929.09,"3 - Standard",0.99
+"DVPLUS","celebgossip.com","Tablet",3945,17,0.431,0.73,348.01,"4 - Value",0.73
+"DVPLUS","homestyledaily.com","Tablet",3356,42,1.252,1.06,1260.52,"3 - Standard",1.06
+"DVPLUS","celebgossip.com","Connected TV",1738,17,0.978,0.97,1051.57,"3 - Standard",0.97
+"STREAMING","BeatStream Music","Mobile",9390,33,0.351,0.56,280.77,"4 - Value",0.56
+"STREAMING","KitchenPlay","Game Console",4943,61,1.234,1.06,1354.53,"3 - Standard",1.06
+"DVPLUS","stylefeed.com","Connected TV",1539,26,1.689,1.13,2319.99,"2 - Plus",1.13
+"DVPLUS","parentingplus.com","Tablet",2819,30,1.064,0.99,983.08,"3 - Standard",0.99
+"DVPLUS","financeweekly.com","Desktop",10099,51,0.505,0.64,450.93,"4 - Value",0.64
+"DVPLUS","financeweekly.com","Connected TV",1005,8,0.796,0.95,645.47,"3 - Standard",0.95
+"DVPLUS","travelscout.com","Connected TV",1251,20,1.599,1.09,1753.49,"3 - Standard",1.09
+"STREAMING","NewsNow 24","Mobile",21051,75,0.356,0.46,279.77,"4 - Value",0.50
+"STREAMING","NewsNow 24","Set Top Box",11246,79,0.703,0.75,856,"4 - Value",0.75
+"STREAMING","LaughTrack TV","Set Top Box",7230,90,1.245,1.08,1519.28,"3 - Standard",1.08
+"STREAMING","Wanderlust TV","Tablet",3575,40,1.119,1.01,1137.43,"3 - Standard",1.01
+"STREAMING","HearthTV Home","Tablet",5501,87,1.582,1.23,1180.38,"2 - Plus",1.23
+"STREAMING","BeatStream Music","Tablet",3509,20,0.570,0.80,358.75,"4 - Value",0.80
+"STREAMING","Wanderlust TV","Mobile",9347,52,0.556,0.68,534.06,"4 - Value",0.68
+"DVPLUS","stylefeed.com","Mobile",16804,143,0.851,0.83,821.79,"4 - Value",0.83
+"DVPLUS","outdoorsman.com","Mobile",8244,61,0.740,0.80,692.79,"4 - Value",0.80
+"DVPLUS","financeweekly.com","Tablet",2284,22,0.963,0.96,739.12,"3 - Standard",0.96
+"STREAMING","PrimeLeague Sports","Connected TV",93371,2176,2.331,2.07,2621.48,"1 - Premium",2.07
+"STREAMING","KitchenPlay","Desktop",2457,21,0.855,0.93,470.45,"3 - Standard",0.93
+"STREAMING","PrimeLeague Sports","Tablet",9027,91,1.008,0.95,868.06,"3 - Standard",0.95
+"DVPLUS","parentingplus.com","Mobile",13725,129,0.940,0.90,742.42,"3 - Standard",0.90
+"DVPLUS","puzzlepal.app","Mobile",19642,60,0.306,0.43,321.96,"4 - Value",0.50
+"DVPLUS","gamerhub.com","Mobile",16722,52,0.311,0.45,183.95,"4 - Value",0.50
+"DVPLUS","financeweekly.com","Mobile",11279,58,0.514,0.63,558.25,"4 - Value",0.63
+"STREAMING","RetroReruns","Connected TV",43201,324,0.750,0.72,888.68,"4 - Value",0.72
+"STREAMING","DocuWorld","Desktop",1836,5,0.272,0.80,437.42,"4 - Value",0.80
+"DVPLUS","weatherwatch.com","Desktop",20052,140,0.698,0.71,678.66,"4 - Value",0.71
+"DVPLUS","outdoorsman.com","Tablet",1667,19,1.140,1.01,628,"3 - Standard",1.01
+"DVPLUS","homestyledaily.com","Connected TV",1507,33,2.190,1.23,2771.13,"2 - Plus",1.23
+"STREAMING","KidsZone","Connected TV",28867,160,0.554,0.58,645.68,"4 - Value",0.58
+"STREAMING","FlixFree Movies","Game Console",10409,81,0.778,0.81,815.56,"4 - Value",0.81
+"STREAMING","KitchenPlay","Set Top Box",7380,134,1.816,1.39,2067.39,"2 - Plus",1.39
+"STREAMING","RetroReruns","Set Top Box",6378,44,0.690,0.79,736.32,"4 - Value",0.79
+"STREAMING","KidsZone","Tablet",2740,5,0.183,0.71,98.05,"4 - Value",0.71
+"STREAMING","BingeBox Entertainment","Set Top Box",14551,238,1.636,1.37,1703.24,"2 - Plus",1.37
+"STREAMING","LaughTrack TV","Desktop",2455,7,0.285,0.76,321.88,"4 - Value",0.76
+"STREAMING","Wanderlust TV","Set Top Box",5285,76,1.438,1.16,1577.23,"2 - Plus",1.16
+"DVPLUS","dailyheadlines.com","Tablet",6975,33,0.473,0.67,605.36,"4 - Value",0.67
+"DVPLUS","autoreviewhub.com","Tablet",2395,18,0.752,0.90,741.81,"3 - Standard",0.90
+"DVPLUS","techpulse.com","Connected TV",1525,19,1.246,1.03,1449.4,"3 - Standard",1.03
+"DVPLUS","homestyledaily.com","Mobile",16676,175,1.049,0.97,873.65,"3 - Standard",0.97
+"DVPLUS","recipebox.com","Connected TV",1811,27,1.491,1.10,1267.89,"3 - Standard",1.10
+"DVPLUS","travelscout.com","Tablet",2923,29,0.992,0.97,807.09,"3 - Standard",0.97
+"DVPLUS","sportscentralnews.com","Connected TV",2214,28,1.265,1.05,2018.26,"3 - Standard",1.05
+"STREAMING","HearthTV Home","Mobile",15351,134,0.873,0.85,822.55,"4 - Value",0.85
+"STREAMING","KitchenPlay","Mobile",13150,120,0.913,0.88,811.25,"3 - Standard",0.88
+"STREAMING","FlixFree Movies","Tablet",10517,64,0.609,0.70,563.92,"4 - Value",0.70
+"STREAMING","PrimeLeague Sports","Set Top Box",13499,298,2.208,1.74,2480.92,"1 - Premium",1.74
+"STREAMING","PrimeLeague Sports","Game Console",8889,108,1.215,1.07,990.72,"3 - Standard",1.07
+"DVPLUS","puzzlepal.app","Connected TV",1699,3,0.177,0.79,254.91,"4 - Value",0.79
+"DVPLUS","gamerhub.com","Desktop",15165,49,0.323,0.47,258.45,"4 - Value",0.50
+"DVPLUS","weatherwatch.com","Mobile",22395,176,0.786,0.77,692.31,"4 - Value",0.77
+"DVPLUS","dailyheadlines.com","Connected TV",3014,30,0.995,0.97,890.04,"3 - Standard",0.97
+"STREAMING","BingeBox Entertainment","Connected TV",101078,1777,1.758,1.58,1934.86,"1 - Premium",1.58
+"STREAMING","FlixFree Movies","Mobile",28458,119,0.418,0.47,411.15,"4 - Value",0.50
+"STREAMING","KitchenPlay","Connected TV",50131,1214,2.422,2.10,2612.08,"1 - Premium",2.10
+"STREAMING","KitchenPlay","Tablet",4777,66,1.382,1.13,1172.1,"2 - Plus",1.13
+"STREAMING","DocuWorld","Game Console",3494,18,0.515,0.78,336.17,"4 - Value",0.78
+"STREAMING","KidsZone","Desktop",1367,1,0.073,0.80,27.84,"4 - Value",0.80
+"STREAMING","BeatStream Music","Game Console",3439,21,0.611,0.82,570.33,"4 - Value",0.82
+"STREAMING","HearthTV Home","Desktop",2794,21,0.752,0.89,589.61,"3 - Standard",0.89
+"DVPLUS","gamerhub.com","Tablet",3507,22,0.627,0.82,591.4,"4 - Value",0.82
+"DVPLUS","weatherwatch.com","Tablet",4601,40,0.869,0.90,891.48,"3 - Standard",0.90
+"STREAMING","FlixFree Movies","Connected TV",108394,1506,1.389,1.26,1483.71,"2 - Plus",1.26
+"STREAMING","DocuWorld","Tablet",3504,19,0.542,0.79,332.98,"4 - Value",0.79
+"STREAMING","HearthTV Home","Connected TV",57292,1412,2.465,2.15,2726.32,"1 - Premium",2.15
+"STREAMING","BeatStream Music","Connected TV",36019,358,0.994,0.92,1078.09,"3 - Standard",0.92
+"STREAMING","DocuWorld","Mobile",9481,38,0.401,0.59,372.33,"4 - Value",0.59
+"STREAMING","PrimeLeague Sports","Mobile",24308,199,0.819,0.79,754.77,"4 - Value",0.79
+"STREAMING","Wanderlust TV","Desktop",1759,18,1.023,0.98,993.96,"3 - Standard",0.98
+"DVPLUS","autoreviewhub.com","Mobile",11192,73,0.652,0.72,538.57,"4 - Value",0.72
+"STREAMING","PrimeLeague Sports","Desktop",4622,32,0.692,0.82,742.96,"4 - Value",0.82
+"STREAMING","FlixFree Movies","Set Top Box",15663,181,1.156,1.04,1361.9,"3 - Standard",1.04
+"STREAMING","BingeBox Entertainment","Game Console",9857,97,0.984,0.93,933.25,"3 - Standard",0.93
+"STREAMING","KidsZone","Mobile",7389,13,0.176,0.50,189.06,"4 - Value",0.50
+"STREAMING","BingeBox Entertainment","Mobile",26475,171,0.646,0.66,587.78,"4 - Value",0.66
+"STREAMING","BeatStream Music","Desktop",1748,4,0.229,0.80,79.02,"4 - Value",0.80
+"DVPLUS","homestyledaily.com","Desktop",15035,149,0.991,0.93,829.88,"3 - Standard",0.93
+"DVPLUS","outdoorsman.com","Desktop",7581,34,0.449,0.64,444.11,"4 - Value",0.64
+"STREAMING","DocuWorld","Set Top Box",5145,53,1.030,0.97,1147.32,"3 - Standard",0.97
+"STREAMING","BeatStream Music","Set Top Box",5147,45,0.874,0.90,821.63,"3 - Standard",0.90
+"DVPLUS","dailyheadlines.com","Desktop",30159,117,0.388,0.45,314.82,"4 - Value",0.50
+"DVPLUS","techpulse.com","Mobile",16412,97,0.591,0.65,522.37,"4 - Value",0.65
+"DVPLUS","techpulse.com","Tablet",3417,11,0.322,0.71,277.69,"4 - Value",0.71
+"DVPLUS","parentingplus.com","Connected TV",1242,11,0.886,0.96,1144.03,"3 - Standard",0.96
+"DVPLUS","puzzlepal.app","Tablet",3981,20,0.502,0.76,504.41,"4 - Value",0.76
+"DVPLUS","recipebox.com","Mobile",19323,198,1.025,0.95,884.36,"3 - Standard",0.95
+"STREAMING","HearthTV Home","Game Console",5582,81,1.451,1.17,1290.16,"2 - Plus",1.17
+"STREAMING","DocuWorld","Connected TV",36008,420,1.166,1.06,1298.97,"3 - Standard",1.06
+"STREAMING","FlixFree Movies","Desktop",5175,15,0.290,0.63,237.22,"4 - Value",0.63
+"STREAMING","RetroReruns","Desktop",2147,0,0.000,0.70,0,"4 - Value",0.70
+"DVPLUS","stylefeed.com","Tablet",3439,46,1.338,1.09,1105.35,"3 - Standard",1.09
+"DVPLUS","autoreviewhub.com","Connected TV",1018,12,1.179,1.01,1314.47,"3 - Standard",1.01
+"STREAMING","RetroReruns","Mobile",11278,27,0.239,0.46,159.01,"4 - Value",0.50
+"STREAMING","NewsNow 24","Tablet",7690,35,0.455,0.65,365.8,"4 - Value",0.65
+"DVPLUS","dailyheadlines.com","Mobile",33626,167,0.497,0.52,496.76,"4 - Value",0.52
+"DVPLUS","parentingplus.com","Desktop",12425,86,0.692,0.74,671.72,"4 - Value",0.74
+"STREAMING","LaughTrack TV","Connected TV",50427,668,1.325,1.19,1489.13,"2 - Plus",1.19
+"STREAMING","Wanderlust TV","Connected TV",36003,670,1.861,1.62,2031.16,"1 - Premium",1.62
+"STREAMING","LaughTrack TV","Mobile",13269,47,0.354,0.51,327.86,"4 - Value",0.51
+"STREAMING","LaughTrack TV","Tablet",4957,37,0.746,0.84,649.16,"4 - Value",0.84
+"STREAMING","Wanderlust TV","Game Console",3376,34,1.007,0.97,685.08,"3 - Standard",0.97
+"STREAMING","KidsZone","Game Console",2711,11,0.406,0.78,366.2,"4 - Value",0.78
+"STREAMING","NewsNow 24","Game Console",7741,30,0.388,0.61,277.59,"4 - Value",0.61
+"STREAMING","BingeBox Entertainment","Desktop",4993,27,0.541,0.75,494.95,"4 - Value",0.75
+"STREAMING","NewsNow 24","Desktop",3927,9,0.229,0.65,172.98,"4 - Value",0.65
+"DVPLUS","sportscentralnews.com","Desktop",22465,212,0.944,0.89,855.23,"3 - Standard",0.89
+"DVPLUS","autoreviewhub.com","Desktop",10106,69,0.683,0.75,629.69,"4 - Value",0.75
+"DVPLUS","celebgossip.com","Desktop",17685,80,0.452,0.54,492.86,"4 - Value",0.54
+"DVPLUS","travelscout.com","Mobile",13690,136,0.993,0.93,867.11,"3 - Standard",0.93
+"DVPLUS","weatherwatch.com","Connected TV",1978,14,0.708,0.90,848.36,"3 - Standard",0.90
+"STREAMING","KidsZone","Set Top Box",4168,24,0.576,0.78,461.83,"4 - Value",0.78
+"STREAMING","RetroReruns","Game Console",4180,15,0.359,0.69,255.33,"4 - Value",0.69
+"STREAMING","BingeBox Entertainment","Tablet",9827,94,0.957,0.92,947.03,"3 - Standard",0.92
+"STREAMING","RetroReruns","Tablet",4255,19,0.447,0.73,299.93,"4 - Value",0.73

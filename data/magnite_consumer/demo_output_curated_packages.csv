@@ -1,0 +1,8 @@
+"PACKAGE_NAME","DESCRIPTION","FEEDS","MATCHED_IMPRESSIONS","REACH_INDIVIDUALS","REACH_HOUSEHOLDS","PURCHASES","PURCHASE_RATE_PCT","LIFT_VS_AVG","AVG_PURCHASE_VALUE","VALUE_PER_1K_IMPS","SUGGESTED_PRICE_TIER"
+"Run of Network (benchmark)","All matched Magnite impressions - for comparison","Streaming + DV+",1769069,25847,24743,19346,1.094,1.00,103.88,1136.05,"3 - Standard"
+"Prime-Time Big Screen","CTV + set-top box, evening hours, top-yield apps","Streaming",173854,14450,14095,5197,2.989,2.73,108.76,3251.1,"1 - Premium"
+"Home & Kitchen Shoppers","Home and cooking apps on CTV plus home and recipe sites","Streaming + DV+",257012,25842,24738,4384,1.706,1.56,102.15,1742.37,"1 - Premium"
+"Sports Fans - Cross Screen","Sports CTV app plus sports news site","Streaming + DV+",208896,25825,24723,3438,1.646,1.50,106.68,1755.71,"1 - Premium"
+"High-Impact Display & Video","Half page, billboard and instream video on top-yield sites","DV+",68322,8743,8603,908,1.329,1.22,90.53,1203.16,"2 - Plus"
+"4K Living Room","Ultra-HD (3840x2160) CTV player impressions","Streaming",178944,15676,15254,2969,1.659,1.52,110.45,1832.53,"1 - Premium"
+"Big-City Streamers","CTV in Miami, New York and Los Angeles","Streaming",261903,4605,4567,5233,1.998,1.83,112.62,2250.18,"1 - Premium"
