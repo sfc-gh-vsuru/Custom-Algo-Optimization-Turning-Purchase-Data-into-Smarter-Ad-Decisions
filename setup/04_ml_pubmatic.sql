@@ -1,0 +1,479 @@
+-- ============================================================================
+-- Affinity Solutions DCR + ML Demo — ML Setup (PubMatic example)
+-- Run AFTER 01_environment.sql, 02_load_data.sql and 03_streamlit_apps.sql.
+-- See ML_SETUP.md for the walkthrough.
+--
+-- What the earlier scripts give you: model RESULTS (deciles, feature
+-- importance, holdout, registry rows) loaded from CSV, so dashboards work.
+-- What this script adds: the actual Snowflake ML models, trained end to end.
+--
+--   Step 1  Generate the PubMatic OpenRTB impression log (10M rows)
+--   Step 2  Build the identity matching input
+--   Step 3  Build the labeled training set (~2.5M rows, 80/20 holdout)
+--   Step 4  Train two SNOWFLAKE.ML.CLASSIFICATION models
+--   Step 5  Score the holdout and evaluate (deciles, importance, holdout)
+--   Step 6  Register the models
+--   Step 7  (Optional) Refresh the PubMatic dashboard tables from the new data
+--
+-- Runtime: ~15-30 min on a LARGE warehouse (training is the longest step).
+-- All random draws are deterministic (HASH-based), so re-runs give the same data.
+-- ============================================================================
+
+USE DATABASE AFFINITY_DEMO;
+USE WAREHOUSE AFFINITY_GEN_WH;
+
+-- ============================================================================
+-- Step 1: PubMatic OpenRTB impression log (flattened bid requests)
+-- Index-only generator, then two 5M-row inserts (avoids large-generator timeouts).
+-- ============================================================================
+USE SCHEMA PUBMATIC_CONSUMER;
+
+CREATE OR REPLACE TABLE OPENRTB_IMPRESSIONS (
+  AUCTION_ID VARCHAR, TIMESTAMP_ TIMESTAMP_NTZ, SITE_DOMAIN VARCHAR, SITE_PAGE VARCHAR,
+  SITE_CAT VARCHAR, PUBLISHER_ID VARCHAR, PUBLISHER_NAME VARCHAR, IMP_ID VARCHAR,
+  AD_FORMAT VARCHAR, BANNER_W NUMBER, BANNER_H NUMBER, BANNER_POS NUMBER,
+  VIDEO_PLACEMENT NUMBER, VIDEO_STARTDELAY NUMBER, BIDFLOOR FLOAT, BIDFLOORCUR VARCHAR,
+  DEAL_ID VARCHAR, DEVICE_TYPE NUMBER, DEVICE_MAKE VARCHAR, DEVICE_MODEL VARCHAR,
+  DEVICE_OS VARCHAR, DEVICE_UA VARCHAR, DEVICE_CARRIER VARCHAR, DEVICE_IP VARCHAR,
+  GEO_ZIP VARCHAR, GEO_CITY VARCHAR, GEO_REGION VARCHAR, GEO_METRO VARCHAR,
+  GEO_LAT FLOAT, GEO_LON FLOAT, GEO_COUNTRY VARCHAR,
+  USER_EID_SOURCE VARCHAR, USER_EID_UID VARCHAR, USER_EID_ATYPE NUMBER,
+  DEVICE_IFA VARCHAR, CONTENT_TITLE VARCHAR, CONTENT_GENRE VARCHAR,
+  CONTENT_NETWORK VARCHAR, CONTENT_CHANNEL VARCHAR, CONTENT_LIVESTREAM NUMBER,
+  CONTENT_LEN NUMBER, AUCTION_TYPE NUMBER, SECURE NUMBER, WINNING_PRICE FLOAT
+) COMMENT = 'PubMatic OpenRTB 2.6 flattened impression log (synthetic)';
+
+CREATE OR REPLACE TEMPORARY TABLE PM_IDX AS SELECT SEQ8() AS IDX FROM TABLE(GENERATOR(ROWCOUNT => 5000000));
+
+-- Batch 1 (offset 0) and batch 2 (offset 5,000,000) use the same SELECT.
+SET PM_OFFSET = 0;
+INSERT INTO OPENRTB_IMPRESSIONS
+WITH g AS (
+  SELECT IDX + $PM_OFFSET AS I FROM PM_IDX
+),
+d AS (
+  SELECT I,
+    MOD(ABS(HASH(I,'site')),15) S, MOD(ABS(HASH(I,'cat')),8) C, MOD(ABS(HASH(I,'pubid')),200) PID,
+    MOD(ABS(HASH(I,'pub')),8) P, MOD(ABS(HASH(I,'fmt')),4) F, MOD(ABS(HASH(I,'bw')),5) BW, MOD(ABS(HASH(I,'bh')),5) BH,
+    MOD(ABS(HASH(I,'pos')),8) POS, MOD(ABS(HASH(I,'vp')),100) VP, MOD(ABS(HASH(I,'vpv')),5) VPV,
+    MOD(ABS(HASH(I,'vs')),100) VS, MOD(ABS(HASH(I,'vsv')),62) VSV, MOD(ABS(HASH(I,'floor')),1951) FL,
+    MOD(ABS(HASH(I,'deal')),100) DL, MOD(ABS(HASH(I,'dealv')),500) DLV, MOD(ABS(HASH(I,'dev')),7) DV,
+    MOD(ABS(HASH(I,'make')),5) MK, MOD(ABS(HASH(I,'model')),6) MD, MOD(ABS(HASH(I,'os')),5) OS,
+    MOD(ABS(HASH(I,'car')),6) CR, MOD(ABS(HASH(I,'geo')),10) GE, MOD(ABS(HASH(I,'reg')),10) RG, MOD(ABS(HASH(I,'metro')),10) MT,
+    MOD(ABS(HASH(I,'eid')),4) E, MOD(ABS(HASH(I,'atype')),100) AT, MOD(ABS(HASH(I,'ifa')),100) IFA,
+    MOD(ABS(HASH(I,'ctv')),100) CT, MOD(ABS(HASH(I,'ctvv')),6) CTV, MOD(ABS(HASH(I,'gen')),100) GN, MOD(ABS(HASH(I,'genv')),6) GNV,
+    MOD(ABS(HASH(I,'net')),100) NT, MOD(ABS(HASH(I,'netv')),5) NTV, MOD(ABS(HASH(I,'chan')),100) CH, MOD(ABS(HASH(I,'chanv')),4) CHV,
+    MOD(ABS(HASH(I,'live')),100) LV, MOD(ABS(HASH(I,'len')),100) LN, MOD(ABS(HASH(I,'lenv')),7171) LNV,
+    MOD(ABS(HASH(I,'auc')),100) AU, MOD(ABS(HASH(I,'win')),2451) WP, MOD(ABS(HASH(I,'ts')),46656000) TS
+  FROM g
+)
+SELECT
+  LOWER(INSERT(INSERT(INSERT(INSERT(MD5(I||'auction'),9,0,'-'),14,0,'-'),19,0,'-'),24,0,'-')),
+  DATEADD('second', -TS, '2026-09-15 00:00:00'::TIMESTAMP_NTZ),
+  ARRAY_CONSTRUCT('cnn.com','nytimes.com','espn.com','weather.com','foxnews.com','washingtonpost.com','bbc.com','people.com',
+                  'tmz.com','buzzfeed.com','forbes.com','cnet.com','techcrunch.com','variety.com','theverge.com')[S]::VARCHAR,
+  '/article/' || MD5(I||'page'),
+  ARRAY_CONSTRUCT('IAB1','IAB12','IAB17','IAB19','IAB3','IAB7','IAB13','IAB22')[C]::VARCHAR,
+  'pub-' || LPAD((PID+1)::VARCHAR,4,'0'),
+  ARRAY_CONSTRUCT('CNN Digital','NYT Media','ESPN Digital','TWC Digital','Fox Corp','WaPo Digital','BBC Studios','Meredith Corp')[P]::VARCHAR,
+  'imp-' || LOWER(INSERT(INSERT(INSERT(INSERT(MD5(I||'imp'),9,0,'-'),14,0,'-'),19,0,'-'),24,0,'-')),
+  ARRAY_CONSTRUCT('banner','video','native','banner')[F]::VARCHAR,
+  ARRAY_CONSTRUCT(300,728,320,160,970)[BW]::NUMBER,
+  ARRAY_CONSTRUCT(250,90,50,600,250)[BH]::NUMBER,
+  POS,
+  IFF(VP < 30, VPV + 1, NULL),
+  IFF(VS < 30, VSV - 1, NULL),
+  ROUND((50 + FL)/100.0, 2), 'USD',
+  IFF(DL < 20, 'deal-' || LPAD((DLV+1)::VARCHAR,4,'0'), NULL),
+  DV + 1,
+  ARRAY_CONSTRUCT('Apple','Samsung','Google','LG','Sony')[MK]::VARCHAR,
+  ARRAY_CONSTRUCT('iPhone','Galaxy S23','Pixel 7','iPad','Smart TV','Unknown')[MD]::VARCHAR,
+  ARRAY_CONSTRUCT('iOS','Android','Windows','macOS','tvOS')[OS]::VARCHAR,
+  'Mozilla/5.0 (compatible; synthetic)',
+  ARRAY_CONSTRUCT('Verizon','AT&T','T-Mobile','Comcast','Charter',NULL)[CR]::VARCHAR,
+  (1+MOD(ABS(HASH(I,'ip1')),223))||'.'||MOD(ABS(HASH(I,'ip2')),256)||'.'||MOD(ABS(HASH(I,'ip3')),256)||'.'||(1+MOD(ABS(HASH(I,'ip4')),254)),
+  LPAD((10000 + MOD(ABS(HASH(I,'zip')),90000))::VARCHAR,5,'0'),
+  ARRAY_CONSTRUCT('New York','Los Angeles','Chicago','Houston','Phoenix','Philadelphia','Dallas','Atlanta','Miami','Denver')[GE]::VARCHAR,
+  ARRAY_CONSTRUCT('NY','CA','IL','TX','AZ','PA','TX','GA','FL','CO')[RG]::VARCHAR,
+  ARRAY_CONSTRUCT('New York','Los Angeles','Chicago','Houston','Dallas-Ft. Worth','Philadelphia','Atlanta','Phoenix','Miami','Denver')[MT]::VARCHAR,
+  ROUND(25 + MOD(ABS(HASH(I,'lat')),2400)/100.0, 4),
+  ROUND(-1*(70 + MOD(ABS(HASH(I,'lon')),5600)/100.0), 4),
+  'USA',
+  -- Identity: UID2 / RampID / DAID (adserver.org) / none — source and value drawn together
+  ARRAY_CONSTRUCT('uidapi.com','liveramp.com','adserver.org',NULL)[E]::VARCHAR,
+  CASE E WHEN 0 THEN 'uid2-' || MD5(I||'uid2') WHEN 1 THEN 'ramp-' || MD5(I||'ramp')
+         WHEN 2 THEN LOWER(INSERT(INSERT(INSERT(INSERT(MD5(I||'daid'),9,0,'-'),14,0,'-'),19,0,'-'),24,0,'-')) END,
+  IFF(AT < 85, 1 + MOD(AT,3), NULL),
+  -- IFA only for in-app (~25%)
+  IFF(IFA < 25, LOWER(INSERT(INSERT(INSERT(INSERT(MD5(I||'ifa'),9,0,'-'),14,0,'-'),19,0,'-'),24,0,'-')), NULL),
+  -- CTV / content fields
+  IFF(CT < 15, ARRAY_CONSTRUCT('Morning News','Evening Lineup','Weekend Sports','Late Night','Prime Time Drama','Reality TV')[CTV]::VARCHAR, NULL),
+  IFF(GN < 20, ARRAY_CONSTRUCT('News','Sports','Drama','Comedy','Reality','Documentary')[GNV]::VARCHAR, NULL),
+  IFF(NT < 15, ARRAY_CONSTRUCT('NBC','CBS','ABC','Fox','Peacock')[NTV]::VARCHAR, NULL),
+  IFF(CH < 15, ARRAY_CONSTRUCT('CNBC','ESPN2','TNT','Bravo')[CHV]::VARCHAR, NULL),
+  IFF(LV < 5, 1, 0),
+  IFF(LN < 15, 30 + LNV, NULL),
+  IFF(AU < 60, 1, 2),
+  1,
+  ROUND((50 + WP)/100.0, 2)
+FROM d;
+
+SET PM_OFFSET = 5000000;
+INSERT INTO OPENRTB_IMPRESSIONS
+WITH g AS (
+  SELECT IDX + $PM_OFFSET AS I FROM PM_IDX
+),
+d AS (
+  SELECT I,
+    MOD(ABS(HASH(I,'site')),15) S, MOD(ABS(HASH(I,'cat')),8) C, MOD(ABS(HASH(I,'pubid')),200) PID,
+    MOD(ABS(HASH(I,'pub')),8) P, MOD(ABS(HASH(I,'fmt')),4) F, MOD(ABS(HASH(I,'bw')),5) BW, MOD(ABS(HASH(I,'bh')),5) BH,
+    MOD(ABS(HASH(I,'pos')),8) POS, MOD(ABS(HASH(I,'vp')),100) VP, MOD(ABS(HASH(I,'vpv')),5) VPV,
+    MOD(ABS(HASH(I,'vs')),100) VS, MOD(ABS(HASH(I,'vsv')),62) VSV, MOD(ABS(HASH(I,'floor')),1951) FL,
+    MOD(ABS(HASH(I,'deal')),100) DL, MOD(ABS(HASH(I,'dealv')),500) DLV, MOD(ABS(HASH(I,'dev')),7) DV,
+    MOD(ABS(HASH(I,'make')),5) MK, MOD(ABS(HASH(I,'model')),6) MD, MOD(ABS(HASH(I,'os')),5) OS,
+    MOD(ABS(HASH(I,'car')),6) CR, MOD(ABS(HASH(I,'geo')),10) GE, MOD(ABS(HASH(I,'reg')),10) RG, MOD(ABS(HASH(I,'metro')),10) MT,
+    MOD(ABS(HASH(I,'eid')),4) E, MOD(ABS(HASH(I,'atype')),100) AT, MOD(ABS(HASH(I,'ifa')),100) IFA,
+    MOD(ABS(HASH(I,'ctv')),100) CT, MOD(ABS(HASH(I,'ctvv')),6) CTV, MOD(ABS(HASH(I,'gen')),100) GN, MOD(ABS(HASH(I,'genv')),6) GNV,
+    MOD(ABS(HASH(I,'net')),100) NT, MOD(ABS(HASH(I,'netv')),5) NTV, MOD(ABS(HASH(I,'chan')),100) CH, MOD(ABS(HASH(I,'chanv')),4) CHV,
+    MOD(ABS(HASH(I,'live')),100) LV, MOD(ABS(HASH(I,'len')),100) LN, MOD(ABS(HASH(I,'lenv')),7171) LNV,
+    MOD(ABS(HASH(I,'auc')),100) AU, MOD(ABS(HASH(I,'win')),2451) WP, MOD(ABS(HASH(I,'ts')),46656000) TS
+  FROM g
+)
+SELECT
+  LOWER(INSERT(INSERT(INSERT(INSERT(MD5(I||'auction'),9,0,'-'),14,0,'-'),19,0,'-'),24,0,'-')),
+  DATEADD('second', -TS, '2026-09-15 00:00:00'::TIMESTAMP_NTZ),
+  ARRAY_CONSTRUCT('cnn.com','nytimes.com','espn.com','weather.com','foxnews.com','washingtonpost.com','bbc.com','people.com',
+                  'tmz.com','buzzfeed.com','forbes.com','cnet.com','techcrunch.com','variety.com','theverge.com')[S]::VARCHAR,
+  '/article/' || MD5(I||'page'),
+  ARRAY_CONSTRUCT('IAB1','IAB12','IAB17','IAB19','IAB3','IAB7','IAB13','IAB22')[C]::VARCHAR,
+  'pub-' || LPAD((PID+1)::VARCHAR,4,'0'),
+  ARRAY_CONSTRUCT('CNN Digital','NYT Media','ESPN Digital','TWC Digital','Fox Corp','WaPo Digital','BBC Studios','Meredith Corp')[P]::VARCHAR,
+  'imp-' || LOWER(INSERT(INSERT(INSERT(INSERT(MD5(I||'imp'),9,0,'-'),14,0,'-'),19,0,'-'),24,0,'-')),
+  ARRAY_CONSTRUCT('banner','video','native','banner')[F]::VARCHAR,
+  ARRAY_CONSTRUCT(300,728,320,160,970)[BW]::NUMBER,
+  ARRAY_CONSTRUCT(250,90,50,600,250)[BH]::NUMBER,
+  POS,
+  IFF(VP < 30, VPV + 1, NULL),
+  IFF(VS < 30, VSV - 1, NULL),
+  ROUND((50 + FL)/100.0, 2), 'USD',
+  IFF(DL < 20, 'deal-' || LPAD((DLV+1)::VARCHAR,4,'0'), NULL),
+  DV + 1,
+  ARRAY_CONSTRUCT('Apple','Samsung','Google','LG','Sony')[MK]::VARCHAR,
+  ARRAY_CONSTRUCT('iPhone','Galaxy S23','Pixel 7','iPad','Smart TV','Unknown')[MD]::VARCHAR,
+  ARRAY_CONSTRUCT('iOS','Android','Windows','macOS','tvOS')[OS]::VARCHAR,
+  'Mozilla/5.0 (compatible; synthetic)',
+  ARRAY_CONSTRUCT('Verizon','AT&T','T-Mobile','Comcast','Charter',NULL)[CR]::VARCHAR,
+  (1+MOD(ABS(HASH(I,'ip1')),223))||'.'||MOD(ABS(HASH(I,'ip2')),256)||'.'||MOD(ABS(HASH(I,'ip3')),256)||'.'||(1+MOD(ABS(HASH(I,'ip4')),254)),
+  LPAD((10000 + MOD(ABS(HASH(I,'zip')),90000))::VARCHAR,5,'0'),
+  ARRAY_CONSTRUCT('New York','Los Angeles','Chicago','Houston','Phoenix','Philadelphia','Dallas','Atlanta','Miami','Denver')[GE]::VARCHAR,
+  ARRAY_CONSTRUCT('NY','CA','IL','TX','AZ','PA','TX','GA','FL','CO')[RG]::VARCHAR,
+  ARRAY_CONSTRUCT('New York','Los Angeles','Chicago','Houston','Dallas-Ft. Worth','Philadelphia','Atlanta','Phoenix','Miami','Denver')[MT]::VARCHAR,
+  ROUND(25 + MOD(ABS(HASH(I,'lat')),2400)/100.0, 4),
+  ROUND(-1*(70 + MOD(ABS(HASH(I,'lon')),5600)/100.0), 4),
+  'USA',
+  ARRAY_CONSTRUCT('uidapi.com','liveramp.com','adserver.org',NULL)[E]::VARCHAR,
+  CASE E WHEN 0 THEN 'uid2-' || MD5(I||'uid2') WHEN 1 THEN 'ramp-' || MD5(I||'ramp')
+         WHEN 2 THEN LOWER(INSERT(INSERT(INSERT(INSERT(MD5(I||'daid'),9,0,'-'),14,0,'-'),19,0,'-'),24,0,'-')) END,
+  IFF(AT < 85, 1 + MOD(AT,3), NULL),
+  IFF(IFA < 25, LOWER(INSERT(INSERT(INSERT(INSERT(MD5(I||'ifa'),9,0,'-'),14,0,'-'),19,0,'-'),24,0,'-')), NULL),
+  IFF(CT < 15, ARRAY_CONSTRUCT('Morning News','Evening Lineup','Weekend Sports','Late Night','Prime Time Drama','Reality TV')[CTV]::VARCHAR, NULL),
+  IFF(GN < 20, ARRAY_CONSTRUCT('News','Sports','Drama','Comedy','Reality','Documentary')[GNV]::VARCHAR, NULL),
+  IFF(NT < 15, ARRAY_CONSTRUCT('NBC','CBS','ABC','Fox','Peacock')[NTV]::VARCHAR, NULL),
+  IFF(CH < 15, ARRAY_CONSTRUCT('CNBC','ESPN2','TNT','Bravo')[CHV]::VARCHAR, NULL),
+  IFF(LV < 5, 1, 0),
+  IFF(LN < 15, 30 + LNV, NULL),
+  IFF(AU < 60, 1, 2),
+  1,
+  ROUND((50 + WP)/100.0, 2)
+FROM d;
+
+SELECT 'Step 1 done' AS STEP, COUNT(*) AS IMPRESSIONS FROM OPENRTB_IMPRESSIONS;   -- expect 10,000,000
+
+-- ============================================================================
+-- Step 2: Identity matching input (what PubMatic submits to the clean room)
+-- ============================================================================
+CREATE OR REPLACE TABLE MATCHING_INPUT AS
+SELECT DISTINCT
+  COALESCE(DEVICE_IFA, USER_EID_UID, DEVICE_IP) AS PRIMARY_ID,
+  DEVICE_IFA AS IFA,
+  USER_EID_SOURCE,
+  USER_EID_UID,
+  DEVICE_IP AS IP_ADDRESS,
+  CASE
+    WHEN DEVICE_IFA IS NOT NULL THEN 'MAID'
+    WHEN USER_EID_SOURCE = 'uidapi.com' THEN 'UID2'
+    WHEN USER_EID_SOURCE = 'liveramp.com' THEN 'RampID'
+    ELSE 'IP_ONLY'
+  END AS BEST_MATCH_METHOD
+FROM OPENRTB_IMPRESSIONS
+WHERE DEVICE_IFA IS NOT NULL OR USER_EID_UID IS NOT NULL OR DEVICE_IP IS NOT NULL;
+
+-- ============================================================================
+-- Step 3: Labeled training set
+-- Purchase labels are driven by supply-side propensity multipliers (device,
+-- format, genre, site, geo) and a deterministic draw. 25% sample (~2.5M rows);
+-- 20% of rows held out (IS_HOLDOUT = 1) and never used in training.
+-- ============================================================================
+USE SCHEMA ML;
+
+CREATE OR REPLACE TABLE TRAINING_SET_PUBMATIC AS
+WITH propensity_calc AS (
+  SELECT
+    AUCTION_ID AS IMPRESSION_ID, TIMESTAMP_ AS IMP_TIMESTAMP, SITE_DOMAIN, AD_FORMAT, PUBLISHER_NAME,
+    DEVICE_TYPE, DEVICE_OS, GEO_METRO, GEO_REGION, BIDFLOOR, WINNING_PRICE, CONTENT_GENRE, DEAL_ID,
+    BANNER_POS, AUCTION_TYPE,
+    -- OpenRTB device type: 1=Mobile/Tablet, 2=PC, 3=CTV, 4=Phone, 5=Tablet, 6=Connected Device, 7=Set Top Box
+    CASE DEVICE_TYPE WHEN 3 THEN 2.5 WHEN 7 THEN 2.5 WHEN 1 THEN 1.8 WHEN 4 THEN 1.8
+                     WHEN 5 THEN 1.4 WHEN 6 THEN 1.3 WHEN 2 THEN 0.7 ELSE 1.0 END AS DEVICE_MULT,
+    CASE AD_FORMAT WHEN 'video' THEN 1.4 WHEN 'native' THEN 1.6 WHEN 'banner' THEN 0.6 ELSE 1.0 END AS FORMAT_MULT,
+    CASE CONTENT_GENRE WHEN 'Sports' THEN 2.0 WHEN 'Reality' THEN 1.6 WHEN 'Comedy' THEN 1.4
+                       WHEN 'Drama' THEN 1.2 WHEN 'Documentary' THEN 1.3 WHEN 'News' THEN 0.8 ELSE 1.0 END AS GENRE_MULT,
+    CASE SITE_DOMAIN WHEN 'espn.com' THEN 1.8 WHEN 'washingtonpost.com' THEN 1.3 WHEN 'nytimes.com' THEN 1.2
+                     WHEN 'people.com' THEN 1.6 WHEN 'weather.com' THEN 1.5 WHEN 'buzzfeed.com' THEN 1.1
+                     WHEN 'tmz.com' THEN 0.9 WHEN 'bbc.com' THEN 1.0 WHEN 'theverge.com' THEN 1.1
+                     WHEN 'techcrunch.com' THEN 1.2 WHEN 'foxnews.com' THEN 1.0 WHEN 'cnn.com' THEN 1.1 ELSE 1.0 END AS SITE_MULT,
+    CASE GEO_METRO WHEN 'New York' THEN 1.3 WHEN 'Los Angeles' THEN 1.4 WHEN 'Chicago' THEN 1.2 WHEN 'Houston' THEN 1.5
+                   WHEN 'Miami' THEN 1.3 WHEN 'Dallas-Ft. Worth' THEN 1.1 WHEN 'Atlanta' THEN 1.2 WHEN 'Denver' THEN 1.0
+                   WHEN 'Philadelphia' THEN 0.9 WHEN 'Phoenix' THEN 0.8 ELSE 1.0 END AS GEO_MULT
+  FROM AFFINITY_DEMO.PUBMATIC_CONSUMER.OPENRTB_IMPRESSIONS
+),
+with_draw AS (
+  SELECT *,
+    0.004 * DEVICE_MULT * FORMAT_MULT * GENRE_MULT * SITE_MULT * GEO_MULT AS COMPOSITE_PROPENSITY,
+    ABS(HASH(IMPRESSION_ID, 42)) / 9223372036854775807.0 AS DRAW
+  FROM propensity_calc
+)
+SELECT
+  IMPRESSION_ID, IMP_TIMESTAMP, SITE_DOMAIN, AD_FORMAT, PUBLISHER_NAME,
+  DEVICE_TYPE, DEVICE_OS, GEO_METRO, GEO_REGION, BIDFLOOR, WINNING_PRICE,
+  CONTENT_GENRE, DEAL_ID, BANNER_POS, AUCTION_TYPE,
+  COMPOSITE_PROPENSITY,
+  IFF(DRAW < COMPOSITE_PROPENSITY, 1, 0) AS PURCHASED,
+  IFF(DRAW < COMPOSITE_PROPENSITY, 25 + ABS(HASH(IMPRESSION_ID, 77)) % 475, 0) AS PURCHASE_AMOUNT,
+  IFF(DRAW < COMPOSITE_PROPENSITY, 1 + ABS(HASH(IMPRESSION_ID, 88)) % 5, 0) AS PURCHASE_TX_COUNT,
+  IFF(ABS(HASH(IMPRESSION_ID, 99)) % 10 < 2, 1, 0) AS IS_HOLDOUT,
+  'PUBMATIC' AS PLATFORM
+FROM with_draw
+WHERE ABS(HASH(IMPRESSION_ID, 123)) % 100 < 25;
+
+SELECT 'Step 3 done' AS STEP, COUNT(*) AS ROWS_, ROUND(AVG(PURCHASED)*100,3) AS PURCHASE_RATE_PCT,
+       ROUND(AVG(IS_HOLDOUT)*100,1) AS HOLDOUT_PCT
+FROM TRAINING_SET_PUBMATIC;   -- expect ~2.5M rows, ~1.07%, 20%
+
+-- ============================================================================
+-- Step 4: Train the models (training rows only: IS_HOLDOUT = 0)
+-- ============================================================================
+
+-- 4a. Yield classifier: will this impression lead to a purchase?
+CREATE OR REPLACE SNOWFLAKE.ML.CLASSIFICATION PUBMATIC_YIELD_CLASSIFIER(
+  INPUT_DATA => SYSTEM$QUERY_REFERENCE('SELECT SITE_DOMAIN, AD_FORMAT, PUBLISHER_NAME, DEVICE_TYPE, GEO_METRO, BIDFLOOR,
+      CONTENT_GENRE, BANNER_POS, AUCTION_TYPE, COMPOSITE_PROPENSITY, PURCHASED
+    FROM AFFINITY_DEMO.ML.TRAINING_SET_PUBMATIC WHERE IS_HOLDOUT = 0'),
+  TARGET_COLNAME => 'PURCHASED'
+);
+
+-- 4b. Spend classifier: how much will they spend? (HIGH / MID / LOW / NO_PURCHASE)
+CREATE OR REPLACE SNOWFLAKE.ML.CLASSIFICATION PUBMATIC_SPEND_CLASSIFIER(
+  INPUT_DATA => SYSTEM$QUERY_REFERENCE('SELECT SITE_DOMAIN, AD_FORMAT, PUBLISHER_NAME, DEVICE_TYPE, GEO_METRO, BIDFLOOR,
+      CONTENT_GENRE, COMPOSITE_PROPENSITY,
+      CASE WHEN PURCHASED = 0 THEN ''NO_PURCHASE'' WHEN PURCHASE_AMOUNT < 100 THEN ''LOW''
+           WHEN PURCHASE_AMOUNT < 300 THEN ''MID'' ELSE ''HIGH'' END AS SPEND_TIER
+    FROM AFFINITY_DEMO.ML.TRAINING_SET_PUBMATIC WHERE IS_HOLDOUT = 0'),
+  TARGET_COLNAME => 'SPEND_TIER'
+);
+
+-- ============================================================================
+-- Step 5: Score the holdout and evaluate
+-- ============================================================================
+
+-- 5a. Score unseen holdout rows
+CREATE OR REPLACE TABLE PUBMATIC_YIELD_PREDICTIONS AS
+SELECT *,
+  PUBMATIC_YIELD_CLASSIFIER!PREDICT(INPUT_DATA => OBJECT_CONSTRUCT(
+    'SITE_DOMAIN', SITE_DOMAIN, 'AD_FORMAT', AD_FORMAT, 'PUBLISHER_NAME', PUBLISHER_NAME,
+    'DEVICE_TYPE', DEVICE_TYPE, 'GEO_METRO', GEO_METRO, 'BIDFLOOR', BIDFLOOR,
+    'CONTENT_GENRE', CONTENT_GENRE, 'BANNER_POS', BANNER_POS, 'AUCTION_TYPE', AUCTION_TYPE,
+    'COMPOSITE_PROPENSITY', COMPOSITE_PROPENSITY)) AS PREDICTION
+FROM TRAINING_SET_PUBMATIC
+WHERE IS_HOLDOUT = 1;
+
+-- 5b. Decile lift (dashboard: ML Models tab, 10-bar chart)
+CREATE OR REPLACE TABLE PUBMATIC_VALIDATION_DECILES AS
+WITH scored AS (
+  SELECT PURCHASED, NTILE(10) OVER (ORDER BY PREDICTION:probability:"1"::FLOAT DESC) AS DECILE
+  FROM PUBMATIC_YIELD_PREDICTIONS
+)
+SELECT DECILE,
+  COUNT(*) AS TOTAL,
+  SUM(PURCHASED) AS PURCHASERS,
+  ROUND(AVG(PURCHASED::FLOAT)*100, 3) AS PURCHASE_RATE_PCT,
+  ROUND(SUM(PURCHASED)::FLOAT / NULLIF((SELECT SUM(PURCHASED) FROM scored), 0) * 100, 1) AS PCT_OF_ALL_PURCHASES,
+  ROUND(SUM(SUM(PURCHASED)) OVER (ORDER BY DECILE) / NULLIF((SELECT SUM(PURCHASED) FROM scored), 0) * 100, 1) AS CUMUL_CAPTURE_PCT,
+  ROUND(AVG(PURCHASED::FLOAT) / NULLIF((SELECT AVG(PURCHASED::FLOAT) FROM scored), 0), 2) AS DECILE_LIFT
+FROM scored
+GROUP BY DECILE
+ORDER BY DECILE;
+
+-- 5c. Feature importance (must use CALL + RESULT_SCAN; TABLE(...!SHOW_FEATURE_IMPORTANCE()) fails)
+CREATE OR REPLACE TABLE PUBMATIC_FEATURE_IMPORTANCE (MODEL VARCHAR, RANK NUMBER, FEATURE VARCHAR, IMPORTANCE_SCORE FLOAT);
+CALL PUBMATIC_YIELD_CLASSIFIER!SHOW_FEATURE_IMPORTANCE();
+INSERT INTO PUBMATIC_FEATURE_IMPORTANCE
+  SELECT 'PUBMATIC_YIELD_CLASSIFIER', "RANK", "FEATURE", ROUND("SCORE", 6) FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
+CALL PUBMATIC_SPEND_CLASSIFIER!SHOW_FEATURE_IMPORTANCE();
+INSERT INTO PUBMATIC_FEATURE_IMPORTANCE
+  SELECT 'PUBMATIC_SPEND_CLASSIFIER', "RANK", "FEATURE", ROUND("SCORE", 6) FROM TABLE(RESULT_SCAN(LAST_QUERY_ID()));
+
+-- 5d. Training vs holdout check (similar rates = no overfitting)
+CREATE OR REPLACE TABLE PUBMATIC_HOLDOUT_RESULTS AS
+SELECT
+  CASE WHEN IS_HOLDOUT = 0 THEN 'Training' ELSE 'Holdout' END AS SET_NAME,
+  COUNT(*) AS IMPRESSIONS,
+  SUM(PURCHASED) AS PURCHASES,
+  ROUND(AVG(PURCHASED::FLOAT)*100, 3) AS PURCHASE_RATE_PCT,
+  ROUND(SUM(WINNING_PRICE) / NULLIF(SUM(PURCHASED), 0), 4) AS COST_PER_PURCHASE,
+  ROUND(SUM(PURCHASE_AMOUNT) / NULLIF(SUM(WINNING_PRICE), 0), 1) AS ROAS
+FROM TRAINING_SET_PUBMATIC
+GROUP BY IS_HOLDOUT
+ORDER BY IS_HOLDOUT;
+
+-- 5e. Built-in evaluation metrics (AUC, precision, recall, F1, log loss) — for review
+CALL PUBMATIC_YIELD_CLASSIFIER!SHOW_GLOBAL_EVALUATION_METRICS();
+CALL PUBMATIC_SPEND_CLASSIFIER!SHOW_GLOBAL_EVALUATION_METRICS();
+
+-- ============================================================================
+-- Step 6: Register the models (refreshes only the PubMatic rows)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS MODEL_REGISTRY (
+  MODEL_NAME VARCHAR(100), MODEL_TYPE VARCHAR, SCHEMA_LOCATION VARCHAR, DESCRIPTION VARCHAR,
+  TARGET_TYPE VARCHAR, TRAINING_DATA VARCHAR, FEATURES VARCHAR, KEY_METRIC VARCHAR, CREATED_AT TIMESTAMP_LTZ
+);
+DELETE FROM MODEL_REGISTRY WHERE MODEL_NAME LIKE 'PUBMATIC%';
+INSERT INTO MODEL_REGISTRY (MODEL_NAME, MODEL_TYPE, SCHEMA_LOCATION, DESCRIPTION, TARGET_TYPE, TRAINING_DATA, FEATURES, KEY_METRIC, CREATED_AT)
+SELECT 'PUBMATIC_YIELD_CLASSIFIER', 'SNOWFLAKE.ML.CLASSIFICATION', 'AFFINITY_DEMO.ML',
+  'Predicts purchase probability for SSP inventory using PubMatic OpenRTB features', 'PURCHASED (0/1)',
+  ROUND((SELECT COUNT(*) FROM TRAINING_SET_PUBMATIC)/1e6, 1) || 'M matched impressions',
+  '10 SSP features: bidfloor, propensity, site, geo, device, format, publisher, genre, banner_pos, auction_type',
+  'Top decile ' || MAX(IFF(DECILE=1, DECILE_LIFT, NULL)) || 'x lift, captures ' || MAX(IFF(DECILE=1, PCT_OF_ALL_PURCHASES, NULL))
+    || '% of purchases; top 3 deciles capture ' || MAX(IFF(DECILE=3, CUMUL_CAPTURE_PCT, NULL)) || '%',
+  CURRENT_TIMESTAMP()
+FROM PUBMATIC_VALIDATION_DECILES
+UNION ALL
+SELECT 'PUBMATIC_SPEND_CLASSIFIER', 'SNOWFLAKE.ML.CLASSIFICATION', 'AFFINITY_DEMO.ML',
+  'Classifies spend tier (HIGH/MID/LOW) for purchase-likely PubMatic impressions', 'SPEND_TIER (H/M/L/None)',
+  ROUND((SELECT COUNT(*) FROM TRAINING_SET_PUBMATIC)/1e6, 1) || 'M matched impressions',
+  '8 SSP features: bidfloor, propensity, device, site, geo, publisher, format, genre',
+  'Separates high-value from low-value conversions for floor pricing', CURRENT_TIMESTAMP();
+
+SELECT 'Step 6 done' AS STEP, MODEL_NAME, KEY_METRIC FROM MODEL_REGISTRY WHERE MODEL_NAME LIKE 'PUBMATIC%';
+
+-- ============================================================================
+-- Step 7 (OPTIONAL): Refresh the PubMatic dashboard tables from the new data.
+-- Skip this section to keep the dashboard on the CSV results loaded by 02.
+-- ============================================================================
+USE SCHEMA PUBMATIC_CONSUMER;
+
+-- 7a. SSP bidding rules (single + cross dimension, shrinkage, Wilson CI)
+CREATE OR REPLACE TABLE DEMO_OUTPUT_SSP_BIDDING_RULES AS
+WITH t AS (SELECT * FROM AFFINITY_DEMO.ML.TRAINING_SET_PUBMATIC WHERE IS_HOLDOUT = 0),
+baseline AS (SELECT AVG(PURCHASED::FLOAT) AS BASELINE_RATE FROM t),
+single_dim AS (
+  SELECT 'Publisher=' || SITE_DOMAIN AS PREDICATE, 'SITE_DOMAIN' AS DIM, SITE_DOMAIN AS DIM_VALUE, COUNT(*) AS SUPPORT, AVG(PURCHASED::FLOAT) AS PURCHASE_RATE
+    FROM t GROUP BY SITE_DOMAIN HAVING COUNT(*) > 500
+  UNION ALL SELECT 'Format=' || AD_FORMAT, 'AD_FORMAT', AD_FORMAT, COUNT(*), AVG(PURCHASED::FLOAT) FROM t GROUP BY AD_FORMAT HAVING COUNT(*) > 500
+  UNION ALL SELECT 'DeviceType=' || DEVICE_TYPE::VARCHAR, 'DEVICE_TYPE', DEVICE_TYPE::VARCHAR, COUNT(*), AVG(PURCHASED::FLOAT) FROM t GROUP BY DEVICE_TYPE HAVING COUNT(*) > 500
+  UNION ALL SELECT 'Metro=' || GEO_METRO, 'GEO_METRO', GEO_METRO, COUNT(*), AVG(PURCHASED::FLOAT) FROM t GROUP BY GEO_METRO HAVING COUNT(*) > 500
+  UNION ALL SELECT 'Genre=' || CONTENT_GENRE, 'CONTENT_GENRE', CONTENT_GENRE, COUNT(*), AVG(PURCHASED::FLOAT) FROM t
+    WHERE CONTENT_GENRE IS NOT NULL AND CONTENT_GENRE != '' GROUP BY CONTENT_GENRE HAVING COUNT(*) > 500
+  UNION ALL SELECT 'PubName=' || PUBLISHER_NAME, 'PUBLISHER_NAME', PUBLISHER_NAME, COUNT(*), AVG(PURCHASED::FLOAT) FROM t GROUP BY PUBLISHER_NAME HAVING COUNT(*) > 500
+),
+cross_dim AS (
+  SELECT 'Publisher=' || SITE_DOMAIN || ' AND Format=' || AD_FORMAT AS PREDICATE, 'Site x Format' AS DIM, SITE_DOMAIN || '_' || AD_FORMAT AS DIM_VALUE,
+         COUNT(*) AS SUPPORT, AVG(PURCHASED::FLOAT) AS PURCHASE_RATE
+    FROM t GROUP BY SITE_DOMAIN, AD_FORMAT HAVING COUNT(*) > 200
+  UNION ALL SELECT 'Publisher=' || SITE_DOMAIN || ' AND DeviceType=' || DEVICE_TYPE::VARCHAR, 'Site x Device', SITE_DOMAIN || '_' || DEVICE_TYPE::VARCHAR,
+         COUNT(*), AVG(PURCHASED::FLOAT) FROM t GROUP BY SITE_DOMAIN, DEVICE_TYPE HAVING COUNT(*) > 200
+  UNION ALL SELECT 'Format=' || AD_FORMAT || ' AND Metro=' || GEO_METRO, 'Format x Metro', AD_FORMAT || '_' || GEO_METRO,
+         COUNT(*), AVG(PURCHASED::FLOAT) FROM t GROUP BY AD_FORMAT, GEO_METRO HAVING COUNT(*) > 200
+  UNION ALL SELECT 'DeviceType=' || DEVICE_TYPE::VARCHAR || ' AND Genre=' || CONTENT_GENRE, 'Device x Genre', DEVICE_TYPE::VARCHAR || '_' || CONTENT_GENRE,
+         COUNT(*), AVG(PURCHASED::FLOAT) FROM t WHERE CONTENT_GENRE IS NOT NULL AND CONTENT_GENRE != '' GROUP BY DEVICE_TYPE, CONTENT_GENRE HAVING COUNT(*) > 200
+),
+all_rules AS (SELECT * FROM single_dim UNION ALL SELECT * FROM cross_dim)
+SELECT
+  ROW_NUMBER() OVER (ORDER BY a.PURCHASE_RATE / b.BASELINE_RATE DESC) AS RULE_ID,
+  a.PREDICATE, a.DIM, a.DIM_VALUE, a.SUPPORT,
+  ROUND(a.PURCHASE_RATE, 6) AS PURCHASE_RATE,
+  ROUND(b.BASELINE_RATE, 6) AS BASELINE_RATE,
+  ROUND(a.PURCHASE_RATE / b.BASELINE_RATE, 3) AS RAW_LIFT,
+  ROUND(1.0 + (a.PURCHASE_RATE / b.BASELINE_RATE - 1.0) * LEAST(a.SUPPORT / 1000.0, 1.0), 3) AS SHRUNK_LIFT,
+  ROUND(GREATEST(0.3, LEAST(2.5, 1.0 + (a.PURCHASE_RATE / b.BASELINE_RATE - 1.0) * LEAST(a.SUPPORT / 1000.0, 1.0))), 2) AS BID_MULTIPLIER,
+  ROUND(a.PURCHASE_RATE - 1.96 * SQRT(a.PURCHASE_RATE * (1 - a.PURCHASE_RATE) / a.SUPPORT), 6) AS CI_LOWER,
+  ROUND(a.PURCHASE_RATE + 1.96 * SQRT(a.PURCHASE_RATE * (1 - a.PURCHASE_RATE) / a.SUPPORT), 6) AS CI_UPPER,
+  CASE WHEN a.PURCHASE_RATE / b.BASELINE_RATE > 1.1 THEN 'BOOST'
+       WHEN a.PURCHASE_RATE / b.BASELINE_RATE < 0.9 THEN 'SUPPRESS' ELSE 'NEUTRAL' END AS RULE_ACTION,
+  'PUBMATIC' AS SOURCE_PLATFORM,
+  CURRENT_DATE AS VALID_FROM,
+  DATEADD('day', 30, CURRENT_DATE) AS VALID_TO
+FROM all_rules a CROSS JOIN baseline b;
+
+-- 7b. Publisher multipliers + floor tiers
+CREATE OR REPLACE TABLE DEMO_OUTPUT_PUBLISHER_MULTIPLIERS AS
+WITH baseline AS (SELECT AVG(PURCHASED::FLOAT) AS BR FROM AFFINITY_DEMO.ML.TRAINING_SET_PUBMATIC WHERE IS_HOLDOUT = 0)
+SELECT
+  SITE_DOMAIN AS PUBLISHER, AD_FORMAT, DEVICE_TYPE, GEO_METRO,
+  COUNT(*) AS IMPRESSIONS, SUM(PURCHASED) AS PURCHASES,
+  ROUND(AVG(PURCHASED::FLOAT)*100, 3) AS PURCHASE_RATE_PCT,
+  ROUND(AVG(PURCHASED::FLOAT) / b.BR, 2) AS YIELD_MULTIPLIER,
+  ROUND(GREATEST(0.3, LEAST(2.5, AVG(PURCHASED::FLOAT) / b.BR)), 2) AS BID_MULTIPLIER,
+  CASE WHEN AVG(PURCHASED::FLOAT) / b.BR > 1.2 THEN 'PREMIUM'
+       WHEN AVG(PURCHASED::FLOAT) / b.BR > 0.8 THEN 'STANDARD' ELSE 'DISCOUNT' END AS FLOOR_TIER
+FROM AFFINITY_DEMO.ML.TRAINING_SET_PUBMATIC t CROSS JOIN baseline b
+WHERE IS_HOLDOUT = 0
+GROUP BY SITE_DOMAIN, AD_FORMAT, DEVICE_TYPE, GEO_METRO, b.BR
+HAVING COUNT(*) > 50;
+
+-- 7c. Inventory yield scores (heatmap)
+CREATE OR REPLACE TABLE DEMO_OUTPUT_INVENTORY_YIELD_SCORES AS
+WITH base AS (SELECT AVG(PURCHASED::FLOAT) AS BR FROM AFFINITY_DEMO.ML.TRAINING_SET_PUBMATIC)
+SELECT
+  SITE_DOMAIN, AD_FORMAT,
+  CASE DEVICE_TYPE WHEN 1 THEN 'Mobile/Tablet' WHEN 2 THEN 'Personal Computer' WHEN 3 THEN 'Connected TV' WHEN 4 THEN 'Phone'
+                   WHEN 5 THEN 'Tablet' WHEN 6 THEN 'Connected Device' WHEN 7 THEN 'Set Top Box' END AS DEVICE_TYPE_LABEL,
+  GEO_METRO AS GEO_DMA, CONTENT_GENRE,
+  COUNT(*) AS IMPRESSIONS, SUM(PURCHASED) AS PURCHASES,
+  ROUND(AVG(PURCHASED::FLOAT), 5) AS PURCHASE_RATE,
+  ROUND(AVG(PURCHASED::FLOAT) / MAX(base.BR), 3) AS YIELD_MULTIPLIER,
+  COUNT(*) AS SUPPORT
+FROM AFFINITY_DEMO.ML.TRAINING_SET_PUBMATIC, base
+GROUP BY SITE_DOMAIN, AD_FORMAT, DEVICE_TYPE, GEO_METRO, CONTENT_GENRE
+HAVING COUNT(*) >= 100;
+
+-- 7d. Floor recommendations + premium packages
+CREATE OR REPLACE TABLE DEMO_OUTPUT_FLOOR_RECOMMENDATIONS AS
+SELECT ROW_NUMBER() OVER (ORDER BY YIELD_MULTIPLIER DESC) AS SEGMENT_ID,
+  SITE_DOMAIN || ' / ' || AD_FORMAT || ' / ' || COALESCE(DEVICE_TYPE_LABEL, 'All') AS DIMENSIONS,
+  ROUND(AVG(PURCHASE_RATE) OVER (), 5) AS BASELINE_FLOOR,
+  ROUND(AVG(PURCHASE_RATE) OVER () * YIELD_MULTIPLIER, 5) AS RECOMMENDED_FLOOR,
+  ROUND((YIELD_MULTIPLIER - 1.0) * 100, 1) AS EXPECTED_REVENUE_LIFT_PCT,
+  IMPRESSIONS, YIELD_MULTIPLIER
+FROM DEMO_OUTPUT_INVENTORY_YIELD_SCORES
+WHERE YIELD_MULTIPLIER > 1.0
+ORDER BY YIELD_MULTIPLIER DESC
+LIMIT 200;
+
+CREATE OR REPLACE TABLE DEMO_OUTPUT_PURCHASE_INVENTORY_PACKAGES AS
+SELECT 'Premium_Purchase_Driven_' || ROW_NUMBER() OVER (ORDER BY AVG_YIELD DESC) AS PACKAGE_NAME,
+  SITE_DOMAIN AS INCLUDED_DOMAIN, AD_FORMAT AS INCLUDED_FORMAT,
+  AVG_YIELD AS PURCHASE_RATE, TOTAL_IMPRESSIONS AS ESTIMATED_REACH
+FROM (SELECT SITE_DOMAIN, AD_FORMAT, ROUND(AVG(PURCHASE_RATE), 5) AS AVG_YIELD, SUM(IMPRESSIONS) AS TOTAL_IMPRESSIONS
+      FROM DEMO_OUTPUT_INVENTORY_YIELD_SCORES GROUP BY SITE_DOMAIN, AD_FORMAT HAVING AVG(YIELD_MULTIPLIER) > 1.0);
+
+-- ============================================================================
+-- Verify
+-- ============================================================================
+SELECT 'OPENRTB_IMPRESSIONS' AS OBJ, COUNT(*)::VARCHAR AS VAL FROM AFFINITY_DEMO.PUBMATIC_CONSUMER.OPENRTB_IMPRESSIONS
+UNION ALL SELECT 'TRAINING_SET_PUBMATIC', COUNT(*)::VARCHAR FROM AFFINITY_DEMO.ML.TRAINING_SET_PUBMATIC
+UNION ALL SELECT 'HOLDOUT_SCORED', COUNT(*)::VARCHAR FROM AFFINITY_DEMO.ML.PUBMATIC_YIELD_PREDICTIONS
+UNION ALL SELECT 'TOP_DECILE_LIFT', DECILE_LIFT::VARCHAR FROM AFFINITY_DEMO.ML.PUBMATIC_VALIDATION_DECILES WHERE DECILE = 1
+UNION ALL SELECT 'TOP_FEATURE', FEATURE FROM AFFINITY_DEMO.ML.PUBMATIC_FEATURE_IMPORTANCE WHERE MODEL = 'PUBMATIC_YIELD_CLASSIFIER' AND RANK = 1
+UNION ALL SELECT 'SSP_RULES', COUNT(*)::VARCHAR FROM AFFINITY_DEMO.PUBMATIC_CONSUMER.DEMO_OUTPUT_SSP_BIDDING_RULES;
+-- Expect: 10,000,000 / ~2.5M / ~500K / ~2.5 / BIDFLOOR or COMPOSITE_PROPENSITY / ~270
